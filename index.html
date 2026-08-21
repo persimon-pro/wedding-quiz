@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Wedding Quiz — Said &amp; Madina</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;600;700&display=swap');
     :root {
@@ -165,6 +166,10 @@
   <input class="name-input" id="playerName" type="text" maxlength="30"/>
   <button class="btn-start" id="btnStart" onclick="startQuiz()">НАЧАТЬ ИСПЫТАНИЕ →</button>
   <p style="font-size:.78rem;color:var(--text-muted)" id="introHint">* Результаты видят все гости 👀</p>
+
+  <div style="margin-top:12px;font-size:0.8rem;">
+    <a href="display.html" target="_blank" style="color:var(--gold);text-decoration:none;opacity:0.8;border-bottom:1px dashed var(--gold);">📺 Режим проектора / Дисплей для зала →</a>
+  </div>
 
   <!-- QR CODE -->
   <div class="qr-block">
@@ -602,17 +607,38 @@ function initQR() {
 }
 
 // ═══════════════════════════════════════════
-//  LEADERBOARD (localStorage)
+//  LEADERBOARD (localStorage & Live Sync)
 // ═══════════════════════════════════════════
 var LB_KEY = 'weddingLB_v2';
 function getLB() { try { return JSON.parse(localStorage.getItem(LB_KEY) || '[]'); } catch(e) { return []; } }
+
+function sendScoreToDisplay(payload) {
+  try {
+    var bc = new BroadcastChannel('wedding_quiz_channel');
+    bc.postMessage({type: 'SUBMIT_SCORE', payload: payload});
+  } catch(e){}
+
+  try {
+    var guestPeer = new Peer();
+    guestPeer.on('open', function() {
+      var conn = guestPeer.connect('said-madina-wedding-host-live');
+      conn.on('open', function() {
+        conn.send({type: 'SUBMIT_SCORE', payload: payload});
+        setTimeout(function(){ guestPeer.destroy(); }, 3000);
+      });
+    });
+    guestPeer.on('error', function(err){ console.log('P2P notice:', err); });
+  } catch(e){}
+}
+
 function saveLB(name, pts, correct, totalSec) {
+  sendScoreToDisplay({name: name, pts: pts, correct: correct, time: totalSec});
   var lb = getLB();
   lb.push({name:name, pts:pts, correct:correct, time:totalSec});
   lb.sort(function(a,b) {
     if (b.pts !== a.pts) return b.pts - a.pts;
     if (b.correct !== a.correct) return b.correct - a.correct;
-    return a.time - b.time; // faster wins on tie
+    return a.time - b.time;
   });
   lb = lb.slice(0, 50);
   localStorage.setItem(LB_KEY, JSON.stringify(lb));
@@ -759,7 +785,6 @@ function renderPodium(lb) {
   var podium = document.getElementById('podium');
   podium.innerHTML = '';
   if (lb.length === 0) return;
-  // order: 2nd, 1st, 3rd for visual podium shape
   var slots = [
     {rank:2, cls:'p2', medal:'🥈'},
     {rank:1, cls:'p1', medal:'🥇'},
@@ -770,7 +795,6 @@ function renderPodium(lb) {
     var place = document.createElement('div');
     place.className = 'podium-place ' + slot.cls;
     if (!entry) { place.style.opacity = '0'; podium.appendChild(place); return; }
-    var initials = entry.name.slice(0,2).toUpperCase();
     var timeStr = formatTime(entry.time);
     place.innerHTML =
       '<div class="podium-avatar" style="background:rgba(212,168,67,.1);border-color:rgba(212,168,67,.3)">' + slot.medal + '</div>' +
