@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Wedding Quiz Live Display — Said &amp; Madina</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600;700;800&display=swap');
+    :root {
+      --gold:#d4a843; --gold-light:#f5d076; --dark:#080808; --card-bg:#141414;
+      --card-border:#2a2a2a; --text:#f5f3ee; --text-muted:#8e8e8e;
+      --bronze:#cd7f32; --silver:#c0c0c0; --gold-medal:#ffd700;
+      --accent:#e67e22; --green:#2ecc71;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{
+      background:var(--dark);
+      color:var(--text);
+      font-family:'Inter',sans-serif;
+      min-height:100vh;
+      overflow-x:hidden;
+      display:flex;
+      flex-direction:column;
+    }
+    #particles{position:fixed;inset:0;z-index:0;pointer-events:none;}
+    #confetti{position:fixed;inset:0;z-index:999;pointer-events:none;}
+
+    /* ── HEADER ── */
+    header{
+      position:relative;z-index:10;
+      padding:18px 32px;
+      display:flex;justify-content:space-between;align-items:center;
+      border-bottom:1px solid rgba(212,168,67,.15);
+      background:rgba(14,14,14,.8);
+      backdrop-filter:blur(10px);
+    }
+    .brand{display:flex;align-items:center;gap:14px;}
+    .brand-ring{font-size:2rem;animation:pulse 2s infinite alternate;}
+    @keyframes pulse{from{transform:scale(1)}to{transform:scale(1.15)}}
+    .brand-title{font-family:'Playfair Display',serif;font-size:1.5rem;color:var(--gold);letter-spacing:2px;}
+    .brand-sub{font-size:.78rem;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;}
+
+    .header-actions{display:flex;align-items:center;gap:12px;}
+    .status-badge{
+      display:flex;align-items:center;gap:8px;
+      padding:6px 16px;border-radius:20px;
+      background:rgba(46,204,113,.1);border:1px solid rgba(46,204,113,.3);
+      font-size:.8rem;font-weight:600;color:var(--green);
+    }
+    .status-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 1.5s infinite;}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+
+    .lang-btn{padding:6px 14px;border-radius:20px;border:1.5px solid var(--card-border);background:var(--card-bg);color:var(--text-muted);font-size:.8rem;font-weight:700;cursor:pointer;transition:all .2s;}
+    .lang-btn.active{border-color:var(--gold);color:var(--gold);background:rgba(212,168,67,.1);}
+
+    .btn-fs{
+      padding:6px 14px;border-radius:20px;border:1px solid var(--card-border);
+      background:var(--card-bg);color:var(--text-muted);font-size:.8rem;font-weight:600;
+      cursor:pointer;transition:all .2s;
+    }
+    .btn-fs:hover{border-color:var(--gold);color:var(--gold);}
+
+    /* ── MAIN CONTAINER ── */
+    main{
+      position:relative;z-index:1;
+      flex:1;display:flex;flex-direction:column;
+      padding:24px 32px 40px;
+      max-width:1400px;width:100%;margin:0 auto;
+    }
+
+    /* ── STATE 1: LOBBY / WAITING ── */
+    #lobby-state{
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      flex:1;gap:28px;text-align:center;animation:fadeIn .5s ease;
+    }
+    .lobby-hero{display:flex;flex-direction:column;align-items:center;gap:12px;}
+    .lobby-badge{
+      padding:6px 20px;border-radius:30px;
+      background:rgba(212,168,67,.12);border:1px solid var(--gold);
+      color:var(--gold);font-weight:700;font-size:.85rem;letter-spacing:1px;text-transform:uppercase;
+    }
+    .lobby-title{
+      font-family:'Playfair Display',serif;
+      font-size:clamp(2.5rem,5vw,4.5rem);
+      line-height:1.15;
+      background:linear-gradient(135deg,#fff,var(--gold-light),var(--gold));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .lobby-subtitle{
+      font-size:1.15rem;color:var(--text-muted);max-width:640px;line-height:1.6;
+    }
+
+    .lobby-grid{
+      display:grid;grid-template-columns:360px 1fr;gap:28px;
+      width:100%;max-width:1000px;align-items:stretch;margin-top:10px;
+    }
+    @media(max-width:850px){.lobby-grid{grid-template-columns:1fr;}}
+
+    .qr-card{
+      background:var(--card-bg);border:1px solid var(--card-border);
+      border-radius:24px;padding:28px;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+      box-shadow:0 12px 40px rgba(0,0,0,.5);
+    }
+    #qrcode{background:#fff;padding:12px;border-radius:12px;}
+    .qr-instruction{font-size:.9rem;color:var(--text-muted);line-height:1.5;}
+
+    .participants-card{
+      background:var(--card-bg);border:1px solid var(--card-border);
+      border-radius:24px;padding:28px;
+      display:flex;flex-direction:column;justify-content:space-between;gap:20px;
+      text-align:left;box-shadow:0 12px 40px rgba(0,0,0,.5);
+    }
+    .card-head{display:flex;justify-content:space-between;align-items:center;}
+    .card-head-title{font-size:1.1rem;font-weight:700;color:var(--gold);}
+    .count-badge{
+      font-family:'Playfair Display',serif;font-size:3rem;font-weight:900;
+      color:var(--gold-light);line-height:1;
+    }
+    .count-sub{font-size:.85rem;color:var(--text-muted);}
+
+    .ticker-list{
+      background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.05);
+      border-radius:14px;padding:12px;height:160px;overflow-y:auto;
+      display:flex;flex-direction:column;gap:8px;
+    }
+    .ticker-item{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:8px 12px;background:rgba(255,255,255,.03);border-radius:8px;
+      font-size:.88rem;animation:slideIn .3s ease;
+    }
+    @keyframes slideIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
+    .ticker-item .t-name{font-weight:600;color:#fff;}
+    .ticker-item .t-score{color:var(--gold);font-weight:700;}
+
+    .btn-reveal{
+      width:100%;padding:20px 32px;border-radius:50px;
+      background:linear-gradient(135deg,var(--gold),var(--gold-light));
+      color:#000;font-family:'Inter',sans-serif;font-size:1.15rem;font-weight:800;
+      border:none;cursor:pointer;letter-spacing:1px;
+      box-shadow:0 8px 30px rgba(212,168,67,.4);
+      transition:transform .2s,box-shadow .2s;
+    }
+    .btn-reveal:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(212,168,67,.6);}
+
+    /* ── STATE 2: REVEAL / RESULTS ── */
+    #results-state{
+      display:none;flex-direction:column;gap:32px;
+      animation:fadeIn .8s ease;
+    }
+    @keyframes fadeIn{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
+
+    .results-hero{text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px;}
+    .results-badge{
+      padding:6px 22px;border-radius:30px;
+      background:linear-gradient(135deg,rgba(255,215,0,.2),rgba(212,168,67,.05));
+      border:1px solid var(--gold);color:var(--gold-light);font-size:.85rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+    }
+    .results-title{
+      font-family:'Playfair Display',serif;
+      font-size:clamp(2.2rem,4.5vw,3.8rem);
+      background:linear-gradient(135deg,#fff,var(--gold-light),var(--gold));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .results-sub{font-size:1.05rem;color:var(--text-muted);}
+
+    /* ── GRAND 3D PODIUM ── */
+    .grand-podium{
+      display:flex;align-items:flex-end;justify-content:center;
+      gap:20px;max-width:960px;width:100%;margin:10px auto 0;
+    }
+    .g-place{
+      display:flex;flex-direction:column;align-items:center;gap:12px;
+      flex:1;max-width:280px;position:relative;
+    }
+    .g-crown{font-size:2.8rem;animation:bounceCrown 1.2s infinite alternate;}
+    @keyframes bounceCrown{from{transform:translateY(0)}to{transform:translateY(-8px)}}
+
+    .g-avatar{
+      width:76px;height:76px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-size:2.2rem;border:3px solid;
+      box-shadow:0 8px 30px rgba(0,0,0,.6);
+    }
+    .gp-1 .g-avatar{border-color:var(--gold-medal);background:linear-gradient(135deg,rgba(255,215,0,.3),rgba(255,215,0,.08));box-shadow:0 0 35px rgba(255,215,0,.4);}
+    .gp-2 .g-avatar{border-color:var(--silver);background:linear-gradient(135deg,rgba(192,192,192,.25),rgba(192,192,192,.06));box-shadow:0 0 25px rgba(192,192,192,.3);}
+    .gp-3 .g-avatar{border-color:var(--bronze);background:linear-gradient(135deg,rgba(205,127,50,.25),rgba(205,127,50,.06));box-shadow:0 0 20px rgba(205,127,50,.3);}
+
+    .g-name{font-family:'Playfair Display',serif;font-size:1.4rem;font-weight:700;color:#fff;text-align:center;word-break:break-word;}
+    .g-score{font-size:1.1rem;font-weight:800;color:var(--gold-light);}
+    .g-stats{font-size:.8rem;color:var(--text-muted);}
+
+    .g-pillar{
+      width:100%;border-radius:16px 16px 0 0;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      font-family:'Playfair Display',serif;font-weight:900;
+      box-shadow:inset 0 2px 10px rgba(255,255,255,.1);
+    }
+    .gp-1 .g-pillar{height:200px;background:linear-gradient(180deg,rgba(255,215,0,.3),rgba(255,215,0,.08));border:2px solid rgba(255,215,0,.5);font-size:3.5rem;color:var(--gold-medal);}
+    .gp-2 .g-pillar{height:150px;background:linear-gradient(180deg,rgba(192,192,192,.25),rgba(192,192,192,.05));border:2px solid rgba(192,192,192,.4);font-size:3rem;color:var(--silver);}
+    .gp-3 .g-pillar{height:110px;background:linear-gradient(180deg,rgba(205,127,50,.25),rgba(205,127,50,.05));border:2px solid rgba(205,127,50,.4);font-size:2.6rem;color:var(--bronze);}
+
+    /* ── FULL LEADERBOARD ON DISPLAY ── */
+    .display-table-card{
+      background:var(--card-bg);border:1px solid var(--card-border);
+      border-radius:24px;overflow:hidden;
+      max-width:960px;width:100%;margin:0 auto;
+      box-shadow:0 12px 40px rgba(0,0,0,.5);
+    }
+    .dt-head{
+      padding:16px 24px;background:rgba(212,168,67,.06);border-bottom:1px solid var(--card-border);
+      display:flex;justify-content:space-between;align-items:center;
+    }
+    .dt-head-title{font-size:1.05rem;font-weight:700;color:var(--gold);}
+    .dt-row-headers{
+      display:flex;align-items:center;padding:10px 24px;
+      font-size:.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;
+      border-bottom:1px solid var(--card-border);
+    }
+    .dt-row{
+      display:flex;align-items:center;padding:14px 24px;
+      border-bottom:1px solid var(--card-border);font-size:.95rem;transition:background .2s;
+    }
+    .dt-row:last-child{border-bottom:none;}
+    .dt-row:hover{background:rgba(255,255,255,.02);}
+    .dt-rank{min-width:40px;font-weight:700;color:var(--gold);}
+    .dt-name{flex:1;font-weight:600;}
+    .dt-score{min-width:100px;text-align:right;font-weight:700;color:var(--gold-light);}
+    .dt-correct{min-width:80px;text-align:right;font-size:.85rem;color:var(--text-muted);}
+    .dt-time{min-width:90px;text-align:right;font-size:.85rem;color:var(--text-muted);}
+
+    /* ── HOST CONTROLS BOTTOM ── */
+    .host-bar{
+      position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:50;
+      display:flex;gap:12px;padding:8px 16px;border-radius:40px;
+      background:rgba(20,20,20,.85);border:1px solid var(--card-border);
+      backdrop-filter:blur(12px);box-shadow:0 8px 30px rgba(0,0,0,.6);
+    }
+    .host-btn{
+      padding:8px 18px;border-radius:20px;border:1px solid var(--card-border);
+      background:var(--card-bg);color:var(--text-muted);font-size:.8rem;font-weight:600;
+      cursor:pointer;transition:all .2s;
+    }
+    .host-btn:hover{border-color:var(--gold);color:var(--gold);}
+    .host-btn.danger:hover{border-color:#e74c3c;color:#e74c3c;}
+  </style>
+</head>
+<body>
+<canvas id="particles"></canvas>
+<canvas id="confetti"></canvas>
+
+<!-- ══ HEADER ══ -->
+<header>
+  <div class="brand">
+    <div class="brand-ring">💍</div>
+    <div>
+      <div class="brand-title">САИД &amp; МАДИНА</div>
+      <div class="brand-sub" id="hdrSub">Свадебный Квиз • Live Display</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <div class="status-badge"><div class="status-dot"></div><span id="connStatus">Онлайн / Live</span></div>
+    <button class="lang-btn active" id="btnRu" onclick="setDisplayLang('ru')">RU</button>
+    <button class="lang-btn" id="btnEn" onclick="setDisplayLang('en')">EN</button>
+    <button class="btn-fs" onclick="toggleFullScreen()">⛶ Полноэкранный</button>
+  </div>
+</header>
+
+<!-- ══ MAIN ══ -->
+<main>
+  <!-- ── STAGE 1: LOBBY ── -->
+  <div id="lobby-state">
+    <div class="lobby-hero">
+      <div class="lobby-badge" id="lBadge">Интерактивный Квиз Гостей</div>
+      <h1 class="lobby-title" id="lTitle">Свадебная Битва Знатоков</h1>
+      <p class="lobby-subtitle" id="lSub">Сканируйте QR-код со своего телефона, отвечайте на 10 вопросов с тёмным юмором и боритесь за звание главного знатока пары!</p>
+    </div>
+
+    <div class="lobby-grid">
+      <!-- QR CARD -->
+      <div class="qr-card">
+        <div id="qrcode"></div>
+        <div class="qr-instruction" id="qrText">📱 Наведите камеру телефона для входа в квиз</div>
+      </div>
+
+      <!-- PARTICIPANTS CARD -->
+      <div class="participants-card">
+        <div class="card-head">
+          <span class="card-head-title" id="pCardTitle">Участники квиза</span>
+          <span style="font-size:.8rem;color:var(--green)">● Обновление в реальном времени</span>
+        </div>
+
+        <div>
+          <div class="count-badge"><span id="guestCount">0</span></div>
+          <div class="count-sub" id="pCountSub">гостей уже завершили квиз</div>
+        </div>
+
+        <div>
+          <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:8px" id="lastDoneLabel">Последние завершившие:</div>
+          <div class="ticker-list" id="tickerList">
+            <div style="color:var(--text-muted);font-size:.85rem;text-align:center;padding-top:40px;" id="noGuestsYet">Ожидание первых ответов... ⏱️</div>
+          </div>
+        </div>
+
+        <button class="btn-reveal" id="btnReveal" onclick="revealResults()">
+          🎉 ПОКАЗАТЬ РЕЗУЛЬТАТЫ И ПОБЕДИТЕЛЕЙ →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STAGE 2: RESULTS ── -->
+  <div id="results-state">
+    <div class="results-hero">
+      <div class="results-badge" id="rBadge">Итоги Свадебного Квиза</div>
+      <h1 class="results-title" id="rTitle">Церемония Награждения</h1>
+      <p class="results-sub" id="rSub">Кто знает Саида и Мадину лучше всех? Вот наши чемпионы!</p>
+    </div>
+
+    <!-- GRAND PODIUM -->
+    <div class="grand-podium" id="grandPodium"></div>
+
+    <!-- FULL TABLE -->
+    <div class="display-table-card">
+      <div class="dt-head">
+        <span class="dt-head-title" id="tTitle">Полная таблица участников</span>
+        <span style="font-size:.82rem;color:var(--text-muted);"><span id="totalGuestsTable">0</span> участников</span>
+      </div>
+      <div class="dt-row-headers">
+        <span class="dt-rank">#</span>
+        <span class="dt-name" id="thName">Имя</span>
+        <span class="dt-score" id="thScore">Очки</span>
+        <span class="dt-correct" id="thCorrect">Верно</span>
+        <span class="dt-time" id="thTime">Время</span>
+      </div>
+      <div id="displayTableRows"></div>
+    </div>
+  </div>
+</main>
+
+<!-- ══ HOST CONTROLS BAR ══ -->
+<div class="host-bar">
+  <button class="host-btn" onclick="toggleStage()" id="btnToggleStage">⇄ Переключить экран</button>
+  <button class="host-btn" onclick="addMockGuest()">+ Тестовый гость</button>
+  <button class="host-btn danger" onclick="clearDisplayData()">🗑 Сбросить данные</button>
+</div>
+
+<script>
+var currentLang = 'ru';
+var DT = {
+  ru: {
+    hdrSub: 'Свадебный Квиз • Live Display',
+    connStatus: 'Онлайн / Live',
+    lBadge: 'Интерактивный Квиз Гостей',
+    lTitle: 'Свадебная Битва Знатоков',
+    lSub: 'Сканируйте QR-код со своего телефона, отвечайте на 10 вопросов с тёмным юмором и боритесь за звание главного знатока пары!',
+    qrText: '📱 Наведите камеру телефона для входа в квиз',
+    pCardTitle: 'Участники квиза',
+    pCountSub: 'гостей уже завершили квиз',
+    lastDoneLabel: 'Последние завершившие:',
+    noGuestsYet: 'Ожидание первых ответов... ⏱️',
+    btnReveal: '🎉 ПОКАЗАТЬ РЕЗУЛЬТАТЫ И ПОБЕДИТЕЛЕЙ →',
+    rBadge: 'Итоги Свадебного Квиза',
+    rTitle: 'Церемония Награждения',
+    rSub: 'Кто знает Саида и Мадину лучше всех? Вот наши чемпионы!',
+    tTitle: 'Полная таблица участников',
+    thName: 'Имя',
+    thScore: 'Очки',
+    thCorrect: 'Верно',
+    thTime: 'Время',
+    pts: 'очков',
+    secShort: 'с',
+    clearConfirm: 'Вы уверены, что хотите сбросить список участников?'
+  },
+  en: {
+    hdrSub: 'Wedding Quiz • Live Display',
+    connStatus: 'Live / Connected',
+    lBadge: 'Guest Interactive Quiz',
+    lTitle: 'Wedding Trivia Battle',
+    lSub: 'Scan the QR code with your phone, answer 10 dark-humored questions and compete for the title of Ultimate Couple Connoisseur!',
+    qrText: '📱 Point your phone camera to join the quiz',
+    pCardTitle: 'Quiz Participants',
+    pCountSub: 'guests have finished the quiz',
+    lastDoneLabel: 'Recently finished:',
+    noGuestsYet: 'Waiting for first submissions... ⏱️',
+    btnReveal: '🎉 REVEAL RESULTS & WINNERS →',
+    rBadge: 'Wedding Quiz Results',
+    rTitle: 'Awards Ceremony',
+    rSub: 'Who knows Said & Madina best? Here are our champions!',
+    tTitle: 'Full Leaderboard',
+    thName: 'Name',
+    thScore: 'Score',
+    thCorrect: 'Correct',
+    thTime: 'Time',
+    pts: 'pts',
+    secShort: 's',
+    clearConfirm: 'Are you sure you want to reset all participants?'
+  }
+};
+
+function setDisplayLang(l) {
+  currentLang = l;
+  document.getElementById('btnRu').classList.toggle('active', l==='ru');
+  document.getElementById('btnEn').classList.toggle('active', l==='en');
+  applyDisplayLang();
+  renderAll();
+}
+
+function applyDisplayLang() {
+  var t = DT[currentLang];
+  document.getElementById('hdrSub').textContent = t.hdrSub;
+  document.getElementById('connStatus').textContent = t.connStatus;
+  document.getElementById('lBadge').textContent = t.lBadge;
+  document.getElementById('lTitle').textContent = t.lTitle;
+  document.getElementById('lSub').textContent = t.lSub;
+  document.getElementById('qrText').textContent = t.qrText;
+  document.getElementById('pCardTitle').textContent = t.pCardTitle;
+  document.getElementById('pCountSub').textContent = t.pCountSub;
+  document.getElementById('lastDoneLabel').textContent = t.lastDoneLabel;
+  if (getScores().length === 0) document.getElementById('noGuestsYet').textContent = t.noGuestsYet;
+  document.getElementById('btnReveal').textContent = t.btnReveal;
+  document.getElementById('rBadge').textContent = t.rBadge;
+  document.getElementById('rTitle').textContent = t.rTitle;
+  document.getElementById('rSub').textContent = t.rSub;
+  document.getElementById('tTitle').textContent = t.tTitle;
+  document.getElementById('thName').textContent = t.thName;
+  document.getElementById('thScore').textContent = t.thScore;
+  document.getElementById('thCorrect').textContent = t.thCorrect;
+  document.getElementById('thTime').textContent = t.thTime;
+}
+
+// ═══════════════════════════════════════════
+//  DATA & STORAGE
+// ═══════════════════════════════════════════
+var STORAGE_KEY = 'weddingLB_v2';
+var isRevealed = false;
+
+function getScores() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch(e) { return []; }
+}
+
+function saveScores(list) {
+  list.sort(function(a,b){
+    if (b.pts !== a.pts) return b.pts - a.pts;
+    if (b.correct !== a.correct) return b.correct - a.correct;
+    return (a.time || 0) - (b.time || 0);
+  });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+}
+
+function addScore(entry) {
+  var list = getScores();
+  list.push(entry);
+  saveScores(list);
+  renderAll();
+  notifyNewSubmission(entry);
+}
+
+function notifyNewSubmission(entry) {
+  var ticker = document.getElementById('tickerList');
+  var noYet = document.getElementById('noGuestsYet');
+  if (noYet) noYet.remove();
+  var item = document.createElement('div');
+  item.className = 'ticker-item';
+  item.innerHTML = '<span class="t-name">✨ ' + esc(entry.name) + '</span><span class="t-score">' + entry.pts + ' ' + DT[currentLang].pts + '</span>';
+  ticker.insertBefore(item, ticker.firstChild);
+}
+
+// ═══════════════════════════════════════════
+//  PEERJS / LIVE CLOUD SYNC & BROADCAST
+// ═══════════════════════════════════════════
+var PEER_ROOM = 'said-madina-wedding-host-live';
+
+function initPeerSync() {
+  try {
+    var peer = new Peer(PEER_ROOM);
+    peer.on('open', function(id) {
+      console.log('Host Peer ID open:', id);
+    });
+    peer.on('connection', function(conn) {
+      conn.on('data', function(data) {
+        if (data && data.type === 'SUBMIT_SCORE' && data.payload) {
+          addScore(data.payload);
+        }
+      });
+    });
+    peer.on('error', function(err) {
+      console.log('PeerJS fallback / notice:', err);
+    });
+  } catch(e) { console.log('Peer init error:', e); }
+
+  // BroadcastChannel for same-browser multi-tab sync
+  try {
+    var bc = new BroadcastChannel('wedding_quiz_channel');
+    bc.onmessage = function(ev) {
+      if (ev.data && ev.data.type === 'SUBMIT_SCORE' && ev.data.payload) {
+        addScore(ev.data.payload);
+      }
+    };
+  } catch(e) {}
+
+  // LocalStorage storage event
+  window.addEventListener('storage', function(e) {
+    if (e.key === STORAGE_KEY) renderAll();
+  });
+}
+
+// ═══════════════════════════════════════════
+//  RENDER FUNCTIONS
+// ═══════════════════════════════════════════
+function renderAll() {
+  var list = getScores();
+  document.getElementById('guestCount').textContent = list.length;
+  document.getElementById('totalGuestsTable').textContent = list.length;
+  renderPodium(list);
+  renderTable(list);
+}
+
+function renderPodium(list) {
+  var pod = document.getElementById('grandPodium');
+  pod.innerHTML = '';
+  if (list.length === 0) return;
+
+  var slots = [
+    {rank:2, cls:'gp-2', medal:'🥈', crown:''},
+    {rank:1, cls:'gp-1', medal:'🥇', crown:'👑'},
+    {rank:3, cls:'gp-3', medal:'🥉', crown:''}
+  ];
+
+  slots.forEach(function(slot) {
+    var entry = list[slot.rank - 1];
+    var div = document.createElement('div');
+    div.className = 'g-place ' + slot.cls;
+    if (!entry) { div.style.opacity = '0'; pod.appendChild(div); return; }
+
+    var timeStr = formatTime(entry.time);
+    div.innerHTML =
+      (slot.crown ? '<div class="g-crown">' + slot.crown + '</div>' : '<div style="height:40px"></div>') +
+      '<div class="g-avatar">' + slot.medal + '</div>' +
+      '<div class="g-name">' + esc(entry.name) + '</div>' +
+      '<div class="g-score">' + entry.pts + ' ' + DT[currentLang].pts + '</div>' +
+      '<div class="g-stats">✓ ' + (entry.correct || '—') + '/10 • ' + timeStr + '</div>' +
+      '<div class="g-pillar">' + slot.rank + '</div>';
+    pod.appendChild(div);
+  });
+}
+
+function renderTable(list) {
+  var container = document.getElementById('displayTableRows');
+  container.innerHTML = '';
+  var medals = ['🥇','🥈','🥉'];
+  list.forEach(function(entry, i) {
+    var row = document.createElement('div');
+    row.className = 'dt-row';
+    row.innerHTML =
+      '<span class="dt-rank">' + (medals[i] || (i+1)) + '</span>' +
+      '<span class="dt-name">' + esc(entry.name) + '</span>' +
+      '<span class="dt-score">' + entry.pts + '</span>' +
+      '<span class="dt-correct">' + (entry.correct !== undefined ? entry.correct + '/10' : '—') + '</span>' +
+      '<span class="dt-time">' + (entry.time !== undefined ? formatTime(entry.time) : '—') + '</span>';
+    container.appendChild(row);
+  });
+}
+
+function formatTime(sec) {
+  if (!sec && sec !== 0) return '—';
+  var m = Math.floor(sec/60), s = sec % 60;
+  return m > 0 ? m + 'm ' + s + DT[currentLang].secShort : s + DT[currentLang].secShort;
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ═══════════════════════════════════════════
+//  STAGES / TRANSITIONS & FANFARE
+// ═══════════════════════════════════════════
+function revealResults() {
+  isRevealed = true;
+  document.getElementById('lobby-state').style.display = 'none';
+  document.getElementById('results-state').style.display = 'flex';
+  renderAll();
+  launchConfetti();
+  playTriumphantFanfare();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function toggleStage() {
+  if (isRevealed) {
+    isRevealed = false;
+    document.getElementById('lobby-state').style.display = 'flex';
+    document.getElementById('results-state').style.display = 'none';
+  } else {
+    revealResults();
+  }
+}
+
+function clearDisplayData() {
+  if (confirm(DT[currentLang].clearConfirm)) {
+    localStorage.removeItem(STORAGE_KEY);
+    document.getElementById('tickerList').innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;text-align:center;padding-top:40px;" id="noGuestsYet">' + DT[currentLang].noGuestsYet + '</div>';
+    renderAll();
+  }
+}
+
+function addMockGuest() {
+  var mockNames = ['Алишер', 'Зарина', 'Джамшед', 'Нигина', 'Фарход', 'Тахмина', 'Рустам', 'Шахноза'];
+  var randomName = mockNames[Math.floor(Math.random()*mockNames.length)] + ' ' + Math.floor(Math.random()*90+10);
+  var randomPts = Math.floor(Math.random()*120 + 80);
+  var randomCorr = Math.floor(randomPts / 18) + 3;
+  var randomTime = Math.floor(Math.random()*100 + 45);
+  addScore({name:randomName, pts:randomPts, correct:Math.min(10, randomCorr), time:randomTime});
+}
+
+function toggleFullScreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(function(){});
+  } else {
+    if (document.exitFullscreen) document.exitFullscreen();
+  }
+}
+
+// ═══════════════════════════════════════════
+//  WEB AUDIO SYNTHESIZED FANFARE (No external files)
+// ═══════════════════════════════════════════
+function playTriumphantFanfare() {
+  try {
+    var AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    var ctx = new AudioContext();
+    var now = ctx.currentTime;
+    var notes = [
+      {f: 523.25, start: 0.0, dur: 0.18},
+      {f: 523.25, start: 0.2, dur: 0.18},
+      {f: 523.25, start: 0.4, dur: 0.18},
+      {f: 659.25, start: 0.6, dur: 0.6},
+      {f: 587.33, start: 1.25, dur: 0.18},
+      {f: 659.25, start: 1.45, dur: 0.18},
+      {f: 783.99, start: 1.7, dur: 1.2}
+    ];
+    notes.forEach(function(n) {
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(n.f, now + n.start);
+      gain.gain.setValueAtTime(0, now + n.start);
+      gain.gain.linearRampToValueAtTime(0.25, now + n.start + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + n.start + n.dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + n.start);
+      osc.stop(now + n.start + n.dur);
+    });
+  } catch(e){}
+}
+
+// ═══════════════════════════════════════════
+//  QR CODE INIT (Points to main index.html quiz)
+// ═══════════════════════════════════════════
+function initDisplayQR() {
+  var mainUrl = window.location.href.replace('display.html', '').replace('display', '');
+  if (!mainUrl.endsWith('/')) mainUrl += '/';
+  try {
+    new QRCode(document.getElementById('qrcode'), {
+      text: mainUrl,
+      width: 170, height: 170,
+      colorDark: '#000000', colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  } catch(e) {
+    document.getElementById('qrcode').innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=170x170&data=' + encodeURIComponent(mainUrl) + '" width="170" height="170" alt="QR"/>';
+  }
+}
+
+// ═══════════════════════════════════════════
+//  PARTICLES & CONFETTI
+// ═══════════════════════════════════════════
+(function(){
+  var c=document.getElementById('particles'),ctx=c.getContext('2d'),W,H,pts;
+  function resize(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
+  function mkP(){return{x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.5+.5,dx:(Math.random()-.5)*.3,dy:-Math.random()*.4-.1,a:Math.random()*.5+.1};}
+  function init(){resize();pts=Array.from({length:90},mkP);}
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    pts.forEach(function(p){
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle='rgba(212,168,67,'+p.a+')';ctx.fill();
+      p.x+=p.dx;p.y+=p.dy;
+      if(p.y<-5){p.y=H+5;p.x=Math.random()*W;}
+    });
+    requestAnimationFrame(draw);
+  }
+  window.addEventListener('resize',resize);init();draw();
+})();
+
+function launchConfetti(){
+  var c=document.getElementById('confetti'),ctx=c.getContext('2d');
+  c.width=window.innerWidth;c.height=window.innerHeight;
+  var colors=['#ffd700','#d4a843','#f0c96a','#ffffff','#e74c3c','#3498db','#2ecc71'];
+  var pieces=Array.from({length:220},function(){return{
+    x:Math.random()*c.width,y:-20,r:Math.random()*8+4,
+    color:colors[Math.floor(Math.random()*colors.length)],
+    dx:(Math.random()-.5)*6,dy:Math.random()*4+2,
+    rot:Math.random()*360,drot:(Math.random()-.5)*10
+  };});
+  var frame=0;
+  function draw(){
+    ctx.clearRect(0,0,c.width,c.height);
+    pieces.forEach(function(p){
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot*Math.PI/180);
+      ctx.fillStyle=p.color;ctx.fillRect(-p.r/2,-p.r/2,p.r,p.r*2);ctx.restore();
+      p.x+=p.dx;p.y+=p.dy;p.rot+=p.drot;
+    });
+    frame++;
+    if(frame<260)requestAnimationFrame(draw);
+    else ctx.clearRect(0,0,c.width,c.height);
+  }
+  draw();
+}
+
+// INIT
+initDisplayQR();
+applyDisplayLang();
+initPeerSync();
+renderAll();
+</script>
+</body>
+</html>
