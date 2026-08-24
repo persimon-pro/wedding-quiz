@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Wedding Quiz — Said &amp; Madina</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;600;700&display=swap');
     :root {
@@ -607,32 +607,42 @@ function initQR() {
 }
 
 // ═══════════════════════════════════════════
-//  LEADERBOARD (localStorage & Live Sync)
+//  LEADERBOARD (localStorage & Cloud API)
 // ═══════════════════════════════════════════
 var LB_KEY = 'weddingLB_v2';
 function getLB() { try { return JSON.parse(localStorage.getItem(LB_KEY) || '[]'); } catch(e) { return []; } }
 
-function sendScoreToDisplay(payload) {
+function sendScoreToBackend(payload) {
+  // 1. Guaranteed Cloud REST API (Vercel & Node.js)
+  try {
+    fetch('/api/scores', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function(r){ return r.json(); }).then(function(d){
+      console.log('Saved to cloud:', d);
+    }).catch(function(err){
+      console.log('Cloud save notice:', err);
+    });
+  } catch(e){}
+
+  // 2. Socket.IO (Node.js server)
+  try {
+    if (typeof io !== 'undefined') {
+      var socket = io();
+      socket.emit('submit_score', payload);
+    }
+  } catch(e){}
+
+  // 3. Local BroadcastChannel
   try {
     var bc = new BroadcastChannel('wedding_quiz_channel');
     bc.postMessage({type: 'SUBMIT_SCORE', payload: payload});
   } catch(e){}
-
-  try {
-    var guestPeer = new Peer();
-    guestPeer.on('open', function() {
-      var conn = guestPeer.connect('said-madina-wedding-host-live');
-      conn.on('open', function() {
-        conn.send({type: 'SUBMIT_SCORE', payload: payload});
-        setTimeout(function(){ guestPeer.destroy(); }, 3000);
-      });
-    });
-    guestPeer.on('error', function(err){ console.log('P2P notice:', err); });
-  } catch(e){}
 }
 
 function saveLB(name, pts, correct, totalSec) {
-  sendScoreToDisplay({name: name, pts: pts, correct: correct, time: totalSec});
+  sendScoreToBackend({name: name, pts: pts, correct: correct, time: totalSec});
   var lb = getLB();
   lb.push({name:name, pts:pts, correct:correct, time:totalSec});
   lb.sort(function(a,b) {
@@ -645,6 +655,7 @@ function saveLB(name, pts, correct, totalSec) {
 }
 function clearLB() {
   if (confirm(t('clearConfirm'))) {
+    try { fetch('/api/scores', { method: 'DELETE' }).catch(function(){}); } catch(e){}
     localStorage.removeItem(LB_KEY);
     showLeaderboardScreen();
   }
@@ -779,6 +790,16 @@ function showLeaderboardScreen() {
   renderPodium(lb);
   renderLBRows(lb);
   showScreen('leaderboard-screen');
+
+  // Also fetch live global cloud leaderboard
+  try {
+    fetch('/api/scores').then(function(r){ return r.json(); }).then(function(remoteList){
+      if (Array.isArray(remoteList) && remoteList.length > 0) {
+        renderPodium(remoteList);
+        renderLBRows(remoteList);
+      }
+    }).catch(function(){});
+  } catch(e){}
 }
 
 function renderPodium(lb) {

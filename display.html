@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Wedding Quiz Live Display — Said &amp; Madina</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600;700;800&display=swap');
     :root {
@@ -469,29 +469,57 @@ function notifyNewSubmission(entry) {
 }
 
 // ═══════════════════════════════════════════
-//  PEERJS / LIVE CLOUD SYNC & BROADCAST
+//  ROCK-SOLID LIVE CLOUD SYNC (Vercel API + Socket.IO + Polling)
 // ═══════════════════════════════════════════
-var PEER_ROOM = 'said-madina-wedding-host-live';
+function initLiveSync() {
+  // 1. Guaranteed REST API Polling every 1.5s (Vercel Serverless & Node.js)
+  async function pollApi() {
+    try {
+      var res = await fetch('/api/scores');
+      if (res.ok) {
+        var remoteList = await res.json();
+        if (Array.isArray(remoteList)) {
+          var current = getScores();
+          if (remoteList.length > current.length) {
+            var diff = remoteList.slice(0, remoteList.length - current.length);
+            diff.forEach(function(entry){ notifyNewSubmission(entry); });
+          }
+          saveScores(remoteList);
+          renderAll();
+        }
+      }
+    } catch(err){}
+  }
 
-function initPeerSync() {
+  setInterval(pollApi, 1500);
+  pollApi();
+
+  // 2. Socket.IO (for Node.js Express server)
   try {
-    var peer = new Peer(PEER_ROOM);
-    peer.on('open', function(id) {
-      console.log('Host Peer ID open:', id);
-    });
-    peer.on('connection', function(conn) {
-      conn.on('data', function(data) {
-        if (data && data.type === 'SUBMIT_SCORE' && data.payload) {
-          addScore(data.payload);
+    if (typeof io !== 'undefined') {
+      var socket = io();
+      socket.on('all_scores', function(list) {
+        if (Array.isArray(list)) {
+          saveScores(list);
+          renderAll();
         }
       });
-    });
-    peer.on('error', function(err) {
-      console.log('PeerJS fallback / notice:', err);
-    });
-  } catch(e) { console.log('Peer init error:', e); }
+      socket.on('score_added', function(entry) {
+        notifyNewSubmission(entry);
+        var list = getScores();
+        list.push(entry);
+        saveScores(list);
+        renderAll();
+      });
+      socket.on('scores_cleared', function() {
+        localStorage.removeItem(STORAGE_KEY);
+        document.getElementById('tickerList').innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;text-align:center;padding-top:40px;" id="noGuestsYet">' + DT[currentLang].noGuestsYet + '</div>';
+        renderAll();
+      });
+    }
+  } catch(e){}
 
-  // BroadcastChannel for same-browser multi-tab sync
+  // 3. BroadcastChannel (for same-browser multi-tab sync)
   try {
     var bc = new BroadcastChannel('wedding_quiz_channel');
     bc.onmessage = function(ev) {
@@ -501,7 +529,7 @@ function initPeerSync() {
     };
   } catch(e) {}
 
-  // LocalStorage storage event
+  // 4. LocalStorage storage event
   window.addEventListener('storage', function(e) {
     if (e.key === STORAGE_KEY) renderAll();
   });
@@ -597,6 +625,15 @@ function toggleStage() {
 
 function clearDisplayData() {
   if (confirm(DT[currentLang].clearConfirm)) {
+    try {
+      fetch('/api/scores', { method: 'DELETE' }).catch(function(){});
+    } catch(e){}
+    try {
+      if (typeof io !== 'undefined') {
+        var socket = io();
+        socket.emit('clear_scores');
+      }
+    } catch(e){}
     localStorage.removeItem(STORAGE_KEY);
     document.getElementById('tickerList').innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;text-align:center;padding-top:40px;" id="noGuestsYet">' + DT[currentLang].noGuestsYet + '</div>';
     renderAll();
@@ -721,7 +758,7 @@ function launchConfetti(){
 // INIT
 initDisplayQR();
 applyDisplayLang();
-initPeerSync();
+initLiveSync();
 renderAll();
 </script>
 </body>
