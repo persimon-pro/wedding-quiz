@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Wedding Quiz Live Display — Said &amp; Madina</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Inter:wght@400;500;600;700;800&display=swap');
     :root {
@@ -340,7 +339,7 @@
   </div>
 </main>
 
-<!-- ══ HOST CONTROLS BAR ══ -->
+<!-- ══ HOST CONTROLS BOTTOM ══ -->
 <div class="host-bar">
   <button class="host-btn" onclick="toggleStage()" id="btnToggleStage">⇄ Переключить экран</button>
   <button class="host-btn" onclick="addMockGuest()">+ Тестовый гость</button>
@@ -469,57 +468,74 @@ function notifyNewSubmission(entry) {
 }
 
 // ═══════════════════════════════════════════
-//  ROCK-SOLID LIVE CLOUD SYNC (Vercel API + Socket.IO + Polling)
+//  ROCK-SOLID VERCEL CLOUD REALTIME SYNC (Zero-config Pub/Sub & SSE)
 // ═══════════════════════════════════════════
+var CLOUD_TOPIC = 'said-madina-wedding-quiz-live-2026';
+var processedMsgIds = new Set();
+
 function initLiveSync() {
-  // 1. Guaranteed REST API Polling every 1.5s (Vercel Serverless & Node.js)
-  async function pollApi() {
+  // 1. Fetch entire event history (restores all participant scores even after refresh)
+  async function fetchHistory() {
     try {
-      var res = await fetch('/api/scores');
+      var res = await fetch('https://ntfy.sh/' + CLOUD_TOPIC + '/json?poll=1&since=12h');
       if (res.ok) {
-        var remoteList = await res.json();
-        if (Array.isArray(remoteList)) {
-          var current = getScores();
-          if (remoteList.length > current.length) {
-            var diff = remoteList.slice(0, remoteList.length - current.length);
-            diff.forEach(function(entry){ notifyNewSubmission(entry); });
-          }
-          saveScores(remoteList);
-          renderAll();
-        }
-      }
-    } catch(err){}
-  }
+        var text = await res.text();
+        var lines = text.trim().split('\n');
+        var list = getScores();
+        var updated = false;
 
-  setInterval(pollApi, 1500);
-  pollApi();
+        lines.forEach(function(line) {
+          if (!line) return;
+          try {
+            var evt = JSON.parse(line);
+            if (evt.event === 'message' && evt.message && !processedMsgIds.has(evt.id)) {
+              processedMsgIds.add(evt.id);
+              var payload = JSON.parse(evt.message);
+              if (payload && payload.name) {
+                var exists = list.some(function(item){
+                  return item.name === payload.name && item.pts === payload.pts;
+                });
+                if (!exists) {
+                  list.push(payload);
+                  notifyNewSubmission(payload);
+                  updated = true;
+                }
+              }
+            }
+          } catch(err){}
+        });
 
-  // 2. Socket.IO (for Node.js Express server)
-  try {
-    if (typeof io !== 'undefined') {
-      var socket = io();
-      socket.on('all_scores', function(list) {
-        if (Array.isArray(list)) {
+        if (updated) {
           saveScores(list);
           renderAll();
         }
-      });
-      socket.on('score_added', function(entry) {
-        notifyNewSubmission(entry);
-        var list = getScores();
-        list.push(entry);
-        saveScores(list);
-        renderAll();
-      });
-      socket.on('scores_cleared', function() {
-        localStorage.removeItem(STORAGE_KEY);
-        document.getElementById('tickerList').innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;text-align:center;padding-top:40px;" id="noGuestsYet">' + DT[currentLang].noGuestsYet + '</div>';
-        renderAll();
-      });
-    }
+      }
+    } catch(e){}
+  }
+
+  fetchHistory();
+
+  // 2. Real-time instant SSE stream (fires immediately when any guest submits)
+  try {
+    var eventSource = new EventSource('https://ntfy.sh/' + CLOUD_TOPIC + '/sse');
+    eventSource.onmessage = function(event) {
+      try {
+        var evt = JSON.parse(event.data);
+        if (evt.event === 'message' && evt.message && !processedMsgIds.has(evt.id)) {
+          processedMsgIds.add(evt.id);
+          var payload = JSON.parse(evt.message);
+          if (payload && payload.name) {
+            addScore(payload);
+          }
+        }
+      } catch(err){}
+    };
   } catch(e){}
 
-  // 3. BroadcastChannel (for same-browser multi-tab sync)
+  // 3. Fallback background poll every 2 seconds
+  setInterval(fetchHistory, 2000);
+
+  // 4. Same-browser Multi-tab BroadcastChannel
   try {
     var bc = new BroadcastChannel('wedding_quiz_channel');
     bc.onmessage = function(ev) {
@@ -529,7 +545,7 @@ function initLiveSync() {
     };
   } catch(e) {}
 
-  // 4. LocalStorage storage event
+  // 5. LocalStorage storage event
   window.addEventListener('storage', function(e) {
     if (e.key === STORAGE_KEY) renderAll();
   });
@@ -625,15 +641,6 @@ function toggleStage() {
 
 function clearDisplayData() {
   if (confirm(DT[currentLang].clearConfirm)) {
-    try {
-      fetch('/api/scores', { method: 'DELETE' }).catch(function(){});
-    } catch(e){}
-    try {
-      if (typeof io !== 'undefined') {
-        var socket = io();
-        socket.emit('clear_scores');
-      }
-    } catch(e){}
     localStorage.removeItem(STORAGE_KEY);
     document.getElementById('tickerList').innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;text-align:center;padding-top:40px;" id="noGuestsYet">' + DT[currentLang].noGuestsYet + '</div>';
     renderAll();

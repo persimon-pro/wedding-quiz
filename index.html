@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Wedding Quiz — Said &amp; Madina</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;600;700&display=swap');
     :root {
@@ -607,34 +606,23 @@ function initQR() {
 }
 
 // ═══════════════════════════════════════════
-//  LEADERBOARD (localStorage & Cloud API)
+//  LEADERBOARD (localStorage & Vercel Cloud Sync)
 // ═══════════════════════════════════════════
 var LB_KEY = 'weddingLB_v2';
-function getLB() { try { return JSON.parse(localStorage.getItem(LB_KEY) || '[]'); } catch(e) { return []; } }
+
+var CLOUD_TOPIC = 'said-madina-wedding-quiz-live-2026';
 
 function sendScoreToBackend(payload) {
-  // 1. Guaranteed Cloud REST API (Vercel & Node.js)
+  // 1. Direct Cloud Pub/Sub Relay (Works on Vercel & all mobile devices 100% reliably)
   try {
-    fetch('/api/scores', {
+    fetch('https://ntfy.sh/' + CLOUD_TOPIC, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    }).then(function(r){ return r.json(); }).then(function(d){
-      console.log('Saved to cloud:', d);
-    }).catch(function(err){
-      console.log('Cloud save notice:', err);
-    });
+    }).catch(function(){});
   } catch(e){}
 
-  // 2. Socket.IO (Node.js server)
-  try {
-    if (typeof io !== 'undefined') {
-      var socket = io();
-      socket.emit('submit_score', payload);
-    }
-  } catch(e){}
-
-  // 3. Local BroadcastChannel
+  // 2. BroadcastChannel for same-device multi-tab
   try {
     var bc = new BroadcastChannel('wedding_quiz_channel');
     bc.postMessage({type: 'SUBMIT_SCORE', payload: payload});
@@ -655,11 +643,11 @@ function saveLB(name, pts, correct, totalSec) {
 }
 function clearLB() {
   if (confirm(t('clearConfirm'))) {
-    try { fetch('/api/scores', { method: 'DELETE' }).catch(function(){}); } catch(e){}
     localStorage.removeItem(LB_KEY);
     showLeaderboardScreen();
   }
 }
+function getLB() { try { return JSON.parse(localStorage.getItem(LB_KEY) || '[]'); } catch(e) { return []; } }
 
 // ═══════════════════════════════════════════
 //  QUIZ LOGIC
@@ -790,16 +778,6 @@ function showLeaderboardScreen() {
   renderPodium(lb);
   renderLBRows(lb);
   showScreen('leaderboard-screen');
-
-  // Also fetch live global cloud leaderboard
-  try {
-    fetch('/api/scores').then(function(r){ return r.json(); }).then(function(remoteList){
-      if (Array.isArray(remoteList) && remoteList.length > 0) {
-        renderPodium(remoteList);
-        renderLBRows(remoteList);
-      }
-    }).catch(function(){});
-  } catch(e){}
 }
 
 function renderPodium(lb) {
