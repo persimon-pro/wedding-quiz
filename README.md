@@ -1,3 +1,17 @@
-# Wedding Quiz — Said & Madina 💍
+# 💍 Свадебный Квиз — Саид & Мадина (Wedding Quiz)
 
-Interactive wedding quiz website with dark humor questions and leaderboards.
+Интерактивный свадебный квиз в реальном времени с синхронизацией очков между мобильными телефонами гостей и экраном проектора / телевизора.
+
+## 🚀 Деплой на Vercel
+Проект полностью готов к деплою на **Vercel**:
+- `index.html` — квиз для гостей с автоматической отправкой очков через `/api/scores`
+- `display.html` — экран для проектора с автоматическим опросом `/api/scores` и отображением победителей
+- `/api/scores.js` — Serverless REST API для приема и отдачи результатов
+
+## 💻 Локальный запуск (Node.js + Socket.IO)
+```bash
+npm install
+npm start
+```
+- Квиз: `http://localhost:3000`
+- Дисплей для проектора: `http://localhost:3000/display.html`
